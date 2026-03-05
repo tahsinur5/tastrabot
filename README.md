@@ -19,6 +19,13 @@ cp .env.example .env
 uv run pytest
 ```
 
+### Pre-commit (lint/format on commit)
+
+```bash
+uv run pre-commit install
+uv run pre-commit run --all-files
+```
+
 ### Secrets
 
 - Keep real secrets in `.env` only (it is ignored by git).

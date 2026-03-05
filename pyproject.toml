@@ -14,7 +14,10 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = [
+  "black>=25.0.0",
+  "pre-commit>=3.7.0",
   "pytest>=8.0.0",
+  "ruff>=0.9.0",
 ]
 
 [tool.setuptools]
@@ -26,3 +29,22 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+extend-exclude = [
+  ".venv",
+  "__pycache__",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = [
+  # Let Black handle line length.
+  "E501",
+]
