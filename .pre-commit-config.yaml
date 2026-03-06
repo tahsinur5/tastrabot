@@ -20,3 +20,11 @@ repos:
     rev: 25.1.0
     hooks:
       - id: black
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (uv)
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
