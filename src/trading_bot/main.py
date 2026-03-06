@@ -3,9 +3,9 @@ from __future__ import annotations
 import argparse
 import logging
 
-from .config import Settings
-from .observability.health import HealthState
-from .observability.logging import configure_logging
+from trading_bot.config import Settings
+from trading_bot.observability.health import HealthState
+from trading_bot.observability.logging import configure_logging
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,4 +36,3 @@ def main(argv: list[str] | None = None) -> int:
 
     logger.info("not_implemented_yet", extra={"next": "Step 3+ adapters/jobs"})
     return 0
-

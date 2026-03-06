@@ -7,7 +7,12 @@ import urllib.request
 from dataclasses import asdict
 from typing import Any
 
-from .store import PortfolioRow, StockSettingsRow, Store, WishlistRow
+from trading_bot.adapters.storage.store import (
+    PortfolioRow,
+    StockSettingsRow,
+    Store,
+    WishlistRow,
+)
 
 
 class SupabaseStore(Store):
@@ -160,4 +165,3 @@ def _row_to_stock_settings(r: dict[str, Any]) -> StockSettingsRow:
         news_level=str(r.get("news_level") or "NORMAL"),
         muted=bool(r.get("muted") or False),
     )
-
