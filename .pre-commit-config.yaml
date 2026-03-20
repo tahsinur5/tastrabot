@@ -24,7 +24,7 @@ repos:
   - repo: local
     hooks:
       - id: pytest
-        name: pytest (uv)
-        entry: uv run pytest
+        name: pytest
+        entry: bash scripts/precommit_pytest.sh
         language: system
         pass_filenames: false
