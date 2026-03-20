@@ -6,7 +6,7 @@ from typing import Protocol
 
 @dataclass(frozen=True)
 class Position:
-     symbol: str
+    symbol: str
     quantity: float
     avg_cost: float | None = None
 
@@ -24,4 +24,3 @@ class BrokerClient(Protocol):
     def list_positions(self) -> list[Position]: ...
 
     def list_open_orders(self) -> list[OpenOrder]: ...
-
