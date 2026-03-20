@@ -12,6 +12,7 @@ def _to_int(value: str | None, *, default: int) -> int:
 
 @dataclass(frozen=True)
 class Settings:
+    app_mode: str = "aws"  # "aws" | "local"
     tz: str = "America/New_York"
     log_level: str = "INFO"
 
@@ -34,10 +35,16 @@ class Settings:
     finnhub_api_key: str | None = None
     marketaux_api_key: str | None = None
 
+    ibkr_host: str = "127.0.0.1"
+    ibkr_port: int = 4001
+    ibkr_client_id: int = 1
+    ibkr_trading_mode: str = "paper"  # "paper" | "live"
+
     @classmethod
     def from_env(cls, environ: dict[str, str] | None = None) -> "Settings":
         env = os.environ if environ is None else environ
         return cls(
+            app_mode=(env.get("APP_MODE", cls.app_mode) or cls.app_mode).lower(),
             tz=env.get("TZ", cls.tz),
             log_level=env.get("LOG_LEVEL", cls.log_level),
             poll_interval_seconds=_to_int(
@@ -63,6 +70,12 @@ class Settings:
             supabase_service_role_key=env.get("SUPABASE_SERVICE_ROLE_KEY") or None,
             finnhub_api_key=env.get("FINNHUB_API_KEY") or None,
             marketaux_api_key=env.get("MARKETAUX_API_KEY") or None,
+            ibkr_host=env.get("IBKR_HOST", cls.ibkr_host),
+            ibkr_port=_to_int(env.get("IBKR_PORT"), default=cls.ibkr_port),
+            ibkr_client_id=_to_int(env.get("IBKR_CLIENT_ID"), default=cls.ibkr_client_id),
+            ibkr_trading_mode=(
+                env.get("IBKR_TRADING_MODE", cls.ibkr_trading_mode) or cls.ibkr_trading_mode
+            ).lower(),
         )
 
     def require(self, *names: str) -> None:
@@ -77,12 +90,20 @@ class Settings:
 
 def _setting_to_env(setting_name: str) -> str:
     mapping = {
+        "app_mode": "APP_MODE",
         "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
         "telegram_chat_id": "TELEGRAM_CHAT_ID",
         "supabase_url": "SUPABASE_URL",
         "supabase_service_role_key": "SUPABASE_SERVICE_ROLE_KEY",
         "finnhub_api_key": "FINNHUB_API_KEY",
         "marketaux_api_key": "MARKETAUX_API_KEY",
+        "ibkr_host": "IBKR_HOST",
+        "ibkr_port": "IBKR_PORT",
+        "ibkr_client_id": "IBKR_CLIENT_ID",
+        "ibkr_trading_mode": "IBKR_TRADING_MODE",
     }
     return mapping.get(setting_name, setting_name.upper())
 
+
+def is_local_mode(settings: Settings) -> bool:
+    return settings.app_mode == "local"
