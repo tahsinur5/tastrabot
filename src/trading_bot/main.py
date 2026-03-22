@@ -38,10 +38,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     store: SupabaseStore | None = None
-    if settings.supabase_url and settings.supabase_service_role_key:
+    if settings.supabase_url and settings.supabase_secret_key:
         store = SupabaseStore(
             supabase_url=settings.supabase_url,
-            service_role_key=settings.supabase_service_role_key,
+            service_role_key=settings.supabase_secret_key,
         )
 
     if settings.telegram_bot_token and settings.telegram_chat_id:

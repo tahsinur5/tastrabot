@@ -30,7 +30,7 @@ class Settings:
     telegram_chat_id: str | None = None
 
     supabase_url: str | None = None
-    supabase_service_role_key: str | None = None
+    supabase_secret_key: str | None = None
 
     finnhub_api_key: str | None = None
     marketaux_api_key: str | None = None
@@ -41,7 +41,7 @@ class Settings:
     ibkr_trading_mode: str = "paper"  # "paper" | "live"
 
     @classmethod
-    def from_env(cls, environ: dict[str, str] | None = None) -> "Settings":
+    def from_env(cls, environ: dict[str, str] | None = None) -> Settings:
         env = os.environ if environ is None else environ
         return cls(
             app_mode=(env.get("APP_MODE", cls.app_mode) or cls.app_mode).lower(),
@@ -56,7 +56,9 @@ class Settings:
             ),
             quiet_hours_start=env.get("QUIET_HOURS_START", cls.quiet_hours_start),
             quiet_hours_end=env.get("QUIET_HOURS_END", cls.quiet_hours_end),
-            default_alert_pct=float(env.get("DEFAULT_ALERT_PCT", cls.default_alert_pct)),
+            default_alert_pct=float(
+                env.get("DEFAULT_ALERT_PCT", cls.default_alert_pct)
+            ),
             default_huge_move_pct=float(
                 env.get("DEFAULT_HUGE_MOVE_PCT", cls.default_huge_move_pct)
             ),
@@ -67,14 +69,21 @@ class Settings:
             telegram_bot_token=env.get("TELEGRAM_BOT_TOKEN") or None,
             telegram_chat_id=env.get("TELEGRAM_CHAT_ID") or None,
             supabase_url=env.get("SUPABASE_URL") or None,
-            supabase_service_role_key=env.get("SUPABASE_SERVICE_ROLE_KEY") or None,
+            supabase_secret_key=(
+                env.get("SUPABASE_SECRET_KEY")
+                or env.get("SUPABASE_SERVICE_ROLE_KEY")
+                or None
+            ),
             finnhub_api_key=env.get("FINNHUB_API_KEY") or None,
             marketaux_api_key=env.get("MARKETAUX_API_KEY") or None,
             ibkr_host=env.get("IBKR_HOST", cls.ibkr_host),
             ibkr_port=_to_int(env.get("IBKR_PORT"), default=cls.ibkr_port),
-            ibkr_client_id=_to_int(env.get("IBKR_CLIENT_ID"), default=cls.ibkr_client_id),
+            ibkr_client_id=_to_int(
+                env.get("IBKR_CLIENT_ID"), default=cls.ibkr_client_id
+            ),
             ibkr_trading_mode=(
-                env.get("IBKR_TRADING_MODE", cls.ibkr_trading_mode) or cls.ibkr_trading_mode
+                env.get("IBKR_TRADING_MODE", cls.ibkr_trading_mode)
+                or cls.ibkr_trading_mode
             ).lower(),
         )
 
@@ -94,7 +103,7 @@ def _setting_to_env(setting_name: str) -> str:
         "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
         "telegram_chat_id": "TELEGRAM_CHAT_ID",
         "supabase_url": "SUPABASE_URL",
-        "supabase_service_role_key": "SUPABASE_SERVICE_ROLE_KEY",
+        "supabase_secret_key": "SUPABASE_SECRET_KEY",
         "finnhub_api_key": "FINNHUB_API_KEY",
         "marketaux_api_key": "MARKETAUX_API_KEY",
         "ibkr_host": "IBKR_HOST",
