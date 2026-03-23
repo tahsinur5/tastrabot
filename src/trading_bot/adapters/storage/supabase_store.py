@@ -4,15 +4,25 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import asdict
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID, uuid4
 
 from trading_bot.adapters.storage.store import (
+    Event,
+    EventType,
     PortfolioRow,
     StockSettingsRow,
     Store,
     WishlistRow,
 )
+
+
+@dataclass(frozen=True)
+class SupabaseHttpError(RuntimeError):
+    status: int
+    body: str
 
 
 class SupabaseStore(Store):
@@ -102,7 +112,69 @@ class SupabaseStore(Store):
             headers={
                 "Prefer": "resolution=merge-duplicates,return=minimal",
             },
+            expect_json_list=False,
         )
+
+    def create_event(
+        self,
+        *,
+        ticker: str,
+        type: EventType,
+        severity: int,
+        payload: dict,
+        event_time: datetime | None = None,
+    ) -> Event:
+        event_id = uuid4()
+        ts = event_time or datetime.now(tz=UTC)
+        body: dict[str, Any] = {
+            "id": str(event_id),
+            "ticker": ticker.upper(),
+            "type": type.value,
+            "severity": severity,
+            "payload": payload,
+            "event_time": ts.isoformat(),
+        }
+        rows = self._post_json(
+            "rest/v1/events",
+            body,
+            headers={"Prefer": "return=representation"},
+            expect_json_list=True,
+        )
+        stored = rows[0] if rows else body
+        return Event(
+            id=UUID(str(stored["id"])),
+            ticker=str(stored["ticker"]),
+            type=EventType(str(stored["type"])),
+            severity=int(stored["severity"]),
+            payload=dict(stored.get("payload") or {}),
+            event_time=datetime.fromisoformat(str(stored["event_time"])),
+        )
+
+    def try_mark_notification_sent(
+        self,
+        *,
+        event_id: UUID,
+        channel: str,
+        dedupe_key: str,
+    ) -> bool:
+        body: dict[str, Any] = {
+            "id": str(uuid4()),
+            "event_id": str(event_id),
+            "channel": channel,
+            "dedupe_key": dedupe_key,
+        }
+        try:
+            self._post_json(
+                "rest/v1/notifications_sent",
+                body,
+                headers={"Prefer": "return=minimal"},
+                expect_json_list=False,
+            )
+            return True
+        except SupabaseHttpError as e:
+            if e.status == 409:
+                return False
+            raise
 
     def _get_json(self, path: str, query: dict[str, str]) -> list[dict[str, Any]]:
         url = self._build_url(path, query)
@@ -120,7 +192,8 @@ class SupabaseStore(Store):
         *,
         query: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
-    ) -> None:
+        expect_json_list: bool,
+    ) -> list[dict[str, Any]]:
         url = self._build_url(path, query or {})
         request_headers = self._headers()
         request_headers["Content-Type"] = "application/json"
@@ -132,7 +205,13 @@ class SupabaseStore(Store):
             method="POST",
             headers=request_headers,
         )
-        self._request(req)
+        raw = self._request(req)
+        if not expect_json_list:
+            return []
+        decoded = json.loads(raw.decode("utf-8")) if raw else []
+        if not isinstance(decoded, list):
+            raise TypeError("Unexpected response type from Supabase (expected list)")
+        return decoded
 
     def _build_url(self, path: str, query: dict[str, str]) -> str:
         base = urllib.parse.urljoin(self._base_url, path)
@@ -152,7 +231,7 @@ class SupabaseStore(Store):
                 return resp.read()
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"Supabase HTTP {e.code}: {body}") from e
+            raise SupabaseHttpError(status=int(e.code), body=body) from e
 
 
 def _row_to_stock_settings(r: dict[str, Any]) -> StockSettingsRow:
