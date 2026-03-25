@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-import time
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -18,7 +18,7 @@ class PollerProviders:
     backup: PriceProvider | None
 
 
-def run_price_poller(
+async def run_price_poller(
     *,
     settings: Settings,
     store: Store,
@@ -31,20 +31,23 @@ def run_price_poller(
     while True:
         try:
             if not window.is_regular_market_open():
-                time.sleep(min(60, settings.poll_interval_seconds))
+                await asyncio.sleep(window.seconds_until_next_open())
                 continue
 
-            symbols = _get_enabled_symbols(store)
+            symbols = await asyncio.to_thread(_get_enabled_symbols, store)
             if not symbols:
-                time.sleep(min(60, settings.poll_interval_seconds))
+                await asyncio.sleep(min(60, settings.poll_interval_seconds))
                 continue
 
             degraded = False
-            quotes = providers.primary.get_quotes(symbols)
+            quotes = await asyncio.to_thread(providers.primary.get_quotes, symbols)
             missing = {s for s in symbols} - {q.symbol for q in quotes}
             if missing and providers.backup is not None:
                 degraded = True
-                quotes += providers.backup.get_quotes(sorted(missing))
+                quotes += await asyncio.to_thread(
+                    providers.backup.get_quotes,
+                    sorted(missing),
+                )
 
             health.mark_poll(provider=providers.primary.name, degraded=degraded)
 
@@ -57,14 +60,14 @@ def run_price_poller(
                     "asof_max": _max_asof(quotes),
                 },
             )
-            time.sleep(
+            await asyncio.sleep(
                 settings.degraded_poll_interval_seconds
                 if degraded
                 else settings.poll_interval_seconds
             )
         except Exception:
             logger.exception("poller_error")
-            time.sleep(10)
+            await asyncio.sleep(10)
 
 
 def _get_enabled_symbols(store: Store) -> list[str]:

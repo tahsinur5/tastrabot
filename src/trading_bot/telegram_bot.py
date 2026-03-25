@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-import time
 from dataclasses import dataclass
 
 from trading_bot.adapters.notify.telegram_client import TelegramClient
@@ -14,7 +14,7 @@ class TelegramBotConfig:
     chat_id: str
 
 
-def run_telegram_bot(
+async def run_telegram_bot(
     *,
     config: TelegramBotConfig,
     ctx: BotContext,
@@ -26,7 +26,11 @@ def run_telegram_bot(
 
     while True:
         try:
-            updates = client.get_updates(offset=offset, timeout=poll_timeout_seconds)
+            updates = await asyncio.to_thread(
+                client.get_updates,
+                offset=offset,
+                timeout=poll_timeout_seconds,
+            )
             for update in updates:
                 offset = update.update_id + 1
                 message = update.message
@@ -40,7 +44,11 @@ def run_telegram_bot(
                 if not text.strip().startswith("/"):
                     continue
                 reply = handle_command(ctx, text)
-                client.send_message(chat_id=config.chat_id, text=reply)
+                await asyncio.to_thread(
+                    client.send_message,
+                    chat_id=config.chat_id,
+                    text=reply,
+                )
         except Exception:
             logger.exception("telegram_loop_error")
-            time.sleep(5)
+            await asyncio.sleep(5)

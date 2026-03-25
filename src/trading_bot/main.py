@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
-import threading
+from asyncio import Task
 
 from trading_bot.adapters.prices.finnhub_provider import FinnhubQuoteProvider
 from trading_bot.adapters.prices.yahoo_provider import YahooQuoteProvider
@@ -13,6 +14,61 @@ from trading_bot.engine.price_poller import PollerProviders, run_price_poller
 from trading_bot.observability.health import HealthState
 from trading_bot.observability.logging import configure_logging
 from trading_bot.telegram_bot import TelegramBotConfig, run_telegram_bot
+
+
+async def _run_bot_runtime(
+    *,
+    settings: Settings,
+    store: SupabaseStore | None,
+    health: HealthState,
+) -> int:
+    ctx = BotContext(
+        store=store,
+        health=health,
+        telegram_chat_id=settings.telegram_chat_id,
+    )
+    tasks: list[Task[None]] = []
+
+    if store is not None:
+        primary = YahooQuoteProvider()
+        backup = (
+            FinnhubQuoteProvider(api_key=settings.finnhub_api_key)
+            if settings.finnhub_api_key
+            else None
+        )
+        tasks.append(
+            asyncio.create_task(
+                run_price_poller(
+                    settings=settings,
+                    store=store,
+                    health=health,
+                    providers=PollerProviders(primary=primary, backup=backup),
+                ),
+                name="price_poller",
+            )
+        )
+
+    tasks.append(
+        asyncio.create_task(
+            run_telegram_bot(
+                config=TelegramBotConfig(
+                    bot_token=settings.telegram_bot_token,
+                    chat_id=settings.telegram_chat_id,
+                ),
+                ctx=ctx,
+            ),
+            name="telegram_bot",
+        )
+    )
+
+    try:
+        await asyncio.gather(*tasks)
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -49,52 +105,9 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if settings.telegram_bot_token and settings.telegram_chat_id:
-        ctx = BotContext(
-            store=store,
-            health=health,
-            telegram_chat_id=settings.telegram_chat_id,
+        return asyncio.run(
+            _run_bot_runtime(settings=settings, store=store, health=health)
         )
-        threads: list[threading.Thread] = []
-
-        if store is not None:
-            primary = YahooQuoteProvider()
-            backup = (
-                FinnhubQuoteProvider(api_key=settings.finnhub_api_key)
-                if settings.finnhub_api_key
-                else None
-            )
-            poller_thread = threading.Thread(
-                target=run_price_poller,
-                kwargs={
-                    "settings": settings,
-                    "store": store,
-                    "health": health,
-                    "providers": PollerProviders(primary=primary, backup=backup),
-                },
-                name="price_poller",
-                daemon=True,
-            )
-            poller_thread.start()
-            threads.append(poller_thread)
-
-        bot_thread = threading.Thread(
-            target=run_telegram_bot,
-            kwargs={
-                "config": TelegramBotConfig(
-                    bot_token=settings.telegram_bot_token,
-                    chat_id=settings.telegram_chat_id,
-                ),
-                "ctx": ctx,
-            },
-            name="telegram_bot",
-            daemon=False,
-        )
-        bot_thread.start()
-        threads.append(bot_thread)
-
-        for t in threads:
-            t.join()
-        return 0
 
     logger.info(
         "no_runtime_configured",
