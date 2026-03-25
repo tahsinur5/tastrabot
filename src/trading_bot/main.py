@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import argparse
 import logging
+import threading
 
+from trading_bot.adapters.prices.finnhub_provider import FinnhubQuoteProvider
+from trading_bot.adapters.prices.yahoo_provider import YahooQuoteProvider
 from trading_bot.adapters.storage.supabase_store import SupabaseStore
 from trading_bot.commands.handlers import BotContext
 from trading_bot.config import Settings
+from trading_bot.engine.price_poller import PollerProviders, run_price_poller
 from trading_bot.observability.health import HealthState
 from trading_bot.observability.logging import configure_logging
 from trading_bot.telegram_bot import TelegramBotConfig, run_telegram_bot
@@ -50,13 +54,46 @@ def main(argv: list[str] | None = None) -> int:
             health=health,
             telegram_chat_id=settings.telegram_chat_id,
         )
-        run_telegram_bot(
-            config=TelegramBotConfig(
-                bot_token=settings.telegram_bot_token,
-                chat_id=settings.telegram_chat_id,
-            ),
-            ctx=ctx,
+        threads: list[threading.Thread] = []
+
+        if store is not None:
+            primary = YahooQuoteProvider()
+            backup = (
+                FinnhubQuoteProvider(api_key=settings.finnhub_api_key)
+                if settings.finnhub_api_key
+                else None
+            )
+            poller_thread = threading.Thread(
+                target=run_price_poller,
+                kwargs={
+                    "settings": settings,
+                    "store": store,
+                    "health": health,
+                    "providers": PollerProviders(primary=primary, backup=backup),
+                },
+                name="price_poller",
+                daemon=True,
+            )
+            poller_thread.start()
+            threads.append(poller_thread)
+
+        bot_thread = threading.Thread(
+            target=run_telegram_bot,
+            kwargs={
+                "config": TelegramBotConfig(
+                    bot_token=settings.telegram_bot_token,
+                    chat_id=settings.telegram_chat_id,
+                ),
+                "ctx": ctx,
+            },
+            name="telegram_bot",
+            daemon=False,
         )
+        bot_thread.start()
+        threads.append(bot_thread)
+
+        for t in threads:
+            t.join()
         return 0
 
     logger.info(
