@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-import urllib.error
-import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
+
+import httpx
 
 from trading_bot.adapters.storage.store import (
     Event,
@@ -177,9 +176,12 @@ class SupabaseStore(Store):
             raise
 
     def _get_json(self, path: str, query: dict[str, str]) -> list[dict[str, Any]]:
-        url = self._build_url(path, query)
-        req = urllib.request.Request(url, method="GET", headers=self._headers())
-        data = self._request(req)
+        data = self._request(
+            method="GET",
+            path=path,
+            query=query,
+            headers=self._headers(),
+        )
         decoded = json.loads(data.decode("utf-8")) if data else []
         if not isinstance(decoded, list):
             raise TypeError("Unexpected response type from Supabase (expected list)")
@@ -194,18 +196,17 @@ class SupabaseStore(Store):
         headers: dict[str, str] | None = None,
         expect_json_list: bool,
     ) -> list[dict[str, Any]]:
-        url = self._build_url(path, query or {})
         request_headers = self._headers()
         request_headers["Content-Type"] = "application/json"
         if headers:
             request_headers.update(headers)
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(body).encode("utf-8"),
+        raw = self._request(
             method="POST",
+            path=path,
+            query=query or {},
             headers=request_headers,
+            content=json.dumps(body).encode("utf-8"),
         )
-        raw = self._request(req)
         if not expect_json_list:
             return []
         decoded = json.loads(raw.decode("utf-8")) if raw else []
@@ -213,11 +214,8 @@ class SupabaseStore(Store):
             raise TypeError("Unexpected response type from Supabase (expected list)")
         return decoded
 
-    def _build_url(self, path: str, query: dict[str, str]) -> str:
-        base = urllib.parse.urljoin(self._base_url, path)
-        if not query:
-            return base
-        return base + "?" + urllib.parse.urlencode(query)
+    def _build_url(self, path: str) -> str:
+        return self._base_url + path.lstrip("/")
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -225,13 +223,32 @@ class SupabaseStore(Store):
             "Authorization": f"Bearer {self._service_role_key}",
         }
 
-    def _request(self, req: urllib.request.Request) -> bytes:
+    def _request(
+        self,
+        *,
+        method: str,
+        path: str,
+        query: dict[str, str],
+        headers: dict[str, str],
+        content: bytes | None = None,
+    ) -> bytes:
+        url = self._build_url(path)
         try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                return resp.read()
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")
-            raise SupabaseHttpError(status=int(e.code), body=body) from e
+            response = httpx.request(
+                method=method,
+                url=url,
+                params=query,
+                headers=headers,
+                content=content,
+                timeout=20,
+            )
+            response.raise_for_status()
+            return response.content
+        except httpx.HTTPStatusError as e:
+            body = e.response.text
+            raise SupabaseHttpError(
+                status=int(e.response.status_code), body=body
+            ) from e
 
 
 def _row_to_stock_settings(r: dict[str, Any]) -> StockSettingsRow:

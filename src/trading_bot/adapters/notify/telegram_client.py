@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from typing import Any
+
+import httpx
 
 
 @dataclass(frozen=True)
@@ -18,7 +18,9 @@ class TelegramClient:
         self._bot_token = bot_token
         self._base_url = f"https://api.telegram.org/bot{bot_token}/"
 
-    def get_updates(self, *, offset: int | None, timeout: int = 30) -> list[TelegramUpdate]:
+    def get_updates(
+        self, *, offset: int | None, timeout: int = 30
+    ) -> list[TelegramUpdate]:
         params: dict[str, str] = {"timeout": str(timeout)}
         if offset is not None:
             params["offset"] = str(offset)
@@ -30,7 +32,9 @@ class TelegramClient:
                 continue
             if "update_id" not in u or "message" not in u:
                 continue
-            out.append(TelegramUpdate(update_id=int(u["update_id"]), message=u["message"]))
+            out.append(
+                TelegramUpdate(update_id=int(u["update_id"]), message=u["message"])
+            )
         return out
 
     def send_message(self, *, chat_id: str, text: str) -> None:
@@ -45,11 +49,9 @@ class TelegramClient:
 
     def _get_json(self, method: str, params: dict[str, str]) -> dict[str, Any]:
         url = self._base_url + method
-        if params:
-            url += "?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, method="GET")
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            raw = resp.read()
+        response = httpx.request("GET", url, params=params, timeout=60)
+        response.raise_for_status()
+        raw = response.content
         decoded = json.loads(raw.decode("utf-8")) if raw else {}
         if not isinstance(decoded, dict):
             raise TypeError("Unexpected Telegram response type")
@@ -59,15 +61,12 @@ class TelegramClient:
 
     def _post_form(self, method: str, form: dict[str, str]) -> dict[str, Any]:
         url = self._base_url + method
-        data = urllib.parse.urlencode(form).encode("utf-8")
-        req = urllib.request.Request(url, data=data, method="POST")
-        req.add_header("Content-Type", "application/x-www-form-urlencoded")
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            raw = resp.read()
+        response = httpx.request("POST", url, data=form, timeout=60)
+        response.raise_for_status()
+        raw = response.content
         decoded = json.loads(raw.decode("utf-8")) if raw else {}
         if not isinstance(decoded, dict):
             raise TypeError("Unexpected Telegram response type")
         if decoded.get("ok") is not True:
             raise RuntimeError(f"Telegram API error: {decoded}")
         return decoded
-

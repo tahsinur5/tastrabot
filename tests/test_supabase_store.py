@@ -1,27 +1,14 @@
 from __future__ import annotations
 
-import io
 import json
 from datetime import UTC, datetime
 from unittest.mock import patch
 from uuid import UUID
 
+import httpx
+
 from trading_bot.adapters.storage.store import EventType
 from trading_bot.adapters.storage.supabase_store import SupabaseHttpError, SupabaseStore
-
-
-class _FakeResponse:
-    def __init__(self, body: bytes) -> None:
-        self._body = body
-
-    def read(self) -> bytes:
-        return self._body
-
-    def __enter__(self) -> _FakeResponse:
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        return None
 
 
 def _lower_headers(headers: dict[str, str]) -> dict[str, str]:
@@ -38,13 +25,15 @@ def test_list_portfolio_builds_request() -> None:
 
     captured = {}
 
-    def fake_urlopen(req, timeout=0):
-        captured["url"] = req.full_url
-        captured["headers"] = _lower_headers(dict(req.headers))
-        captured["method"] = req.get_method()
-        return _FakeResponse(body)
+    def fake_request(method, url, params=None, headers=None, **kwargs):
+        full_url = str(httpx.URL(url, params=params or {}))
+        captured["url"] = full_url
+        captured["headers"] = _lower_headers(dict(headers or {}))
+        captured["method"] = method
+        request = httpx.Request(method, full_url)
+        return httpx.Response(200, content=body, request=request)
 
-    with patch("urllib.request.urlopen", fake_urlopen):
+    with patch("httpx.request", fake_request):
         rows = store.list_portfolio()
 
     assert captured["method"] == "GET"
@@ -68,11 +57,12 @@ def test_list_wishlist_parses_target_price_nullable() -> None:
 
     captured = {}
 
-    def fake_urlopen(req, timeout=0):
-        captured["url"] = req.full_url
-        return _FakeResponse(body)
+    def fake_request(method, url, params=None, **kwargs):
+        captured["url"] = str(httpx.URL(url, params=params or {}))
+        request = httpx.Request(method, captured["url"])
+        return httpx.Response(200, content=body, request=request)
 
-    with patch("urllib.request.urlopen", fake_urlopen):
+    with patch("httpx.request", fake_request):
         rows = store.list_wishlist()
 
     assert "rest/v1/wishlist" in captured["url"]
@@ -89,10 +79,12 @@ def test_get_stock_settings_none_when_missing() -> None:
     )
     body = b"[]"
 
-    def fake_urlopen(req, timeout=0):
-        return _FakeResponse(body)
+    def fake_request(method, url, params=None, **kwargs):
+        full_url = str(httpx.URL(url, params=params or {}))
+        request = httpx.Request(method, full_url)
+        return httpx.Response(200, content=body, request=request)
 
-    with patch("urllib.request.urlopen", fake_urlopen):
+    with patch("httpx.request", fake_request):
         row = store.get_stock_settings("AAPL")
 
     assert row is None
@@ -104,10 +96,12 @@ def test_get_stock_settings_applies_defaults() -> None:
     )
     body = json.dumps([{"ticker": "AAPL"}]).encode("utf-8")
 
-    def fake_urlopen(req, timeout=0):
-        return _FakeResponse(body)
+    def fake_request(method, url, params=None, **kwargs):
+        full_url = str(httpx.URL(url, params=params or {}))
+        request = httpx.Request(method, full_url)
+        return httpx.Response(200, content=body, request=request)
 
-    with patch("urllib.request.urlopen", fake_urlopen):
+    with patch("httpx.request", fake_request):
         row = store.get_stock_settings("aapl")
 
     assert row is not None
@@ -126,14 +120,15 @@ def test_upsert_stock_settings_posts_json() -> None:
     )
     captured = {}
 
-    def fake_urlopen(req, timeout=0):
-        captured["url"] = req.full_url
-        captured["headers"] = _lower_headers(dict(req.headers))
-        captured["method"] = req.get_method()
-        captured["data"] = req.data
-        return _FakeResponse(b"")
+    def fake_request(method, url, params=None, headers=None, content=None, **kwargs):
+        captured["url"] = str(httpx.URL(url, params=params or {}))
+        captured["headers"] = _lower_headers(dict(headers or {}))
+        captured["method"] = method
+        captured["data"] = content
+        request = httpx.Request(method, captured["url"])
+        return httpx.Response(200, content=b"", request=request)
 
-    with patch("urllib.request.urlopen", fake_urlopen):
+    with patch("httpx.request", fake_request):
         store.upsert_stock_settings("tsla", state="BUY", muted=True)
 
     assert captured["method"] == "POST"
@@ -147,19 +142,16 @@ def test_upsert_stock_settings_posts_json() -> None:
 
 
 def test_http_error_includes_body() -> None:
-    import urllib.error
-
     store = SupabaseStore(
         supabase_url="https://example.supabase.co", service_role_key="k"
     )
 
-    def fake_urlopen(req, timeout=0):
-        fp = io.BytesIO(b'{"message":"nope"}')
-        raise urllib.error.HTTPError(
-            req.full_url, 401, "Unauthorized", hdrs=None, fp=fp
-        )
+    def fake_request(method, url, params=None, **kwargs):
+        full_url = str(httpx.URL(url, params=params or {}))
+        request = httpx.Request(method, full_url)
+        return httpx.Response(401, content=b'{"message":"nope"}', request=request)
 
-    with patch("urllib.request.urlopen", fake_urlopen):
+    with patch("httpx.request", fake_request):
         try:
             store.list_portfolio()
         except SupabaseHttpError as e:
@@ -189,14 +181,15 @@ def test_create_event_posts_and_parses_representation() -> None:
         ]
     ).encode("utf-8")
 
-    def fake_urlopen(req, timeout=0):
-        captured["url"] = req.full_url
-        captured["headers"] = _lower_headers(dict(req.headers))
-        captured["method"] = req.get_method()
-        captured["data"] = req.data
-        return _FakeResponse(response)
+    def fake_request(method, url, params=None, headers=None, content=None, **kwargs):
+        captured["url"] = str(httpx.URL(url, params=params or {}))
+        captured["headers"] = _lower_headers(dict(headers or {}))
+        captured["method"] = method
+        captured["data"] = content
+        request = httpx.Request(method, captured["url"])
+        return httpx.Response(200, content=response, request=request)
 
-    with patch("urllib.request.urlopen", fake_urlopen):
+    with patch("httpx.request", fake_request):
         evt = store.create_event(
             ticker="aapl",
             type=EventType.PRICE_MOVE,
@@ -214,17 +207,16 @@ def test_create_event_posts_and_parses_representation() -> None:
 
 
 def test_try_mark_notification_sent_returns_false_on_conflict() -> None:
-    import urllib.error
-
     store = SupabaseStore(
         supabase_url="https://example.supabase.co", service_role_key="k"
     )
 
-    def fake_urlopen(req, timeout=0):
-        fp = io.BytesIO(b'{"message":"duplicate"}')
-        raise urllib.error.HTTPError(req.full_url, 409, "Conflict", hdrs=None, fp=fp)
+    def fake_request(method, url, params=None, **kwargs):
+        full_url = str(httpx.URL(url, params=params or {}))
+        request = httpx.Request(method, full_url)
+        return httpx.Response(409, content=b'{"message":"duplicate"}', request=request)
 
-    with patch("urllib.request.urlopen", fake_urlopen):
+    with patch("httpx.request", fake_request):
         ok = store.try_mark_notification_sent(
             event_id=UUID("11111111-1111-1111-1111-111111111111"),
             channel="telegram",

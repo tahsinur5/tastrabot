@@ -4,22 +4,10 @@ import json
 from datetime import UTC, datetime
 from unittest.mock import patch
 
+import httpx
+
 from trading_bot.adapters.prices.finnhub_provider import FinnhubQuoteProvider
 from trading_bot.adapters.prices.yahoo_provider import YahooQuoteProvider
-
-
-class _FakeResponse:
-    def __init__(self, body: bytes) -> None:
-        self._body = body
-
-    def read(self) -> bytes:
-        return self._body
-
-    def __enter__(self) -> _FakeResponse:
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        return None
 
 
 def test_yahoo_provider_parses_quote_batch() -> None:
@@ -42,11 +30,12 @@ def test_yahoo_provider_parses_quote_batch() -> None:
 
     captured = {}
 
-    def fake_urlopen(req, timeout=0):
-        captured["url"] = req.full_url
-        return _FakeResponse(body)
+    def fake_request(method, url, params=None, **kwargs):
+        captured["url"] = str(httpx.URL(url, params=params or {}))
+        request = httpx.Request(method, captured["url"])
+        return httpx.Response(200, content=body, request=request)
 
-    with patch("urllib.request.urlopen", fake_urlopen):
+    with patch("httpx.request", fake_request):
         quotes = provider.get_quotes(["aapl", "AAPL"])
 
     assert "query1.finance.yahoo.com" in captured["url"]
@@ -64,11 +53,12 @@ def test_finnhub_provider_parses_quote() -> None:
     body = json.dumps({"c": 10.0, "pc": 9.5, "t": ts}).encode("utf-8")
     captured = {}
 
-    def fake_urlopen(req, timeout=0):
-        captured["url"] = req.full_url
-        return _FakeResponse(body)
+    def fake_request(method, url, params=None, **kwargs):
+        captured["url"] = str(httpx.URL(url, params=params or {}))
+        request = httpx.Request(method, captured["url"])
+        return httpx.Response(200, content=body, request=request)
 
-    with patch("urllib.request.urlopen", fake_urlopen):
+    with patch("httpx.request", fake_request):
         quotes = provider.get_quotes(["msft"])
 
     assert "finnhub.io/api/v1/quote" in captured["url"]

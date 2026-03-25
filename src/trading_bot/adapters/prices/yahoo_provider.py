@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-import urllib.parse
-import urllib.request
 from datetime import UTC, datetime
 from typing import Any
+
+import httpx
 
 from trading_bot.adapters.prices.models import Quote
 from trading_bot.adapters.prices.provider import PriceProvider
@@ -18,10 +18,10 @@ class YahooQuoteProvider(PriceProvider):
         if not symbols_clean:
             return []
 
-        url = _build_quote_url(symbols_clean)
-        req = urllib.request.Request(url, method="GET")
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            raw = resp.read()
+        url, params = _build_quote_request(symbols_clean)
+        response = httpx.request("GET", url, params=params, timeout=20)
+        response.raise_for_status()
+        raw = response.content
 
         decoded = json.loads(raw.decode("utf-8")) if raw else {}
         result = (
@@ -40,10 +40,10 @@ class YahooQuoteProvider(PriceProvider):
         return quotes
 
 
-def _build_quote_url(symbols: list[str]) -> str:
-    base = "https://query1.finance.yahoo.com/v7/finance/quote"
-    params = {"symbols": ",".join(symbols)}
-    return base + "?" + urllib.parse.urlencode(params)
+def _build_quote_request(symbols: list[str]) -> tuple[str, dict[str, str]]:
+    return "https://query1.finance.yahoo.com/v7/finance/quote", {
+        "symbols": ",".join(symbols)
+    }
 
 
 def _normalize_symbols(symbols: list[str]) -> list[str]:

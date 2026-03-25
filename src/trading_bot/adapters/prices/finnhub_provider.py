@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-import urllib.parse
-import urllib.request
 from datetime import UTC, datetime
+
+import httpx
 
 from trading_bot.adapters.prices.models import Quote
 from trading_bot.adapters.prices.provider import PriceProvider
@@ -25,10 +25,10 @@ class FinnhubQuoteProvider(PriceProvider):
         return quotes
 
     def _get_quote(self, symbol: str) -> Quote | None:
-        url = _build_quote_url(symbol, self._api_key)
-        req = urllib.request.Request(url, method="GET")
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            raw = resp.read()
+        url, params = _build_quote_request(symbol, self._api_key)
+        response = httpx.request("GET", url, params=params, timeout=20)
+        response.raise_for_status()
+        raw = response.content
         decoded = json.loads(raw.decode("utf-8")) if raw else {}
         if not isinstance(decoded, dict):
             return None
@@ -49,10 +49,8 @@ class FinnhubQuoteProvider(PriceProvider):
         )
 
 
-def _build_quote_url(symbol: str, api_key: str) -> str:
-    base = "https://finnhub.io/api/v1/quote"
-    params = {"symbol": symbol, "token": api_key}
-    return base + "?" + urllib.parse.urlencode(params)
+def _build_quote_request(symbol: str, api_key: str) -> tuple[str, dict[str, str]]:
+    return "https://finnhub.io/api/v1/quote", {"symbol": symbol, "token": api_key}
 
 
 def _normalize_symbols(symbols: list[str]) -> list[str]:
