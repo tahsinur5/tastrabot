@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from trading_bot.engine.market_time import MarketWindow
+from trading_bot.services.market_calendar import MarketWindow
 
 
 def test_seconds_until_next_open_before_open_same_day() -> None:

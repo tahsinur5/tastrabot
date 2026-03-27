@@ -8,8 +8,8 @@ from datetime import datetime
 from trading_bot.adapters.prices.provider import PriceProvider
 from trading_bot.adapters.storage.store import Store
 from trading_bot.config import Settings
-from trading_bot.engine.market_time import MarketWindow
 from trading_bot.observability.health import HealthState
+from trading_bot.services.market_calendar import MarketWindow
 
 
 @dataclass(frozen=True)

@@ -10,10 +10,10 @@ from trading_bot.adapters.prices.yahoo_provider import YahooQuoteProvider
 from trading_bot.adapters.storage.supabase_store import SupabaseStore
 from trading_bot.commands.handlers import BotContext
 from trading_bot.config import Settings
-from trading_bot.engine.price_poller import PollerProviders, run_price_poller
 from trading_bot.observability.health import HealthState
 from trading_bot.observability.logging import configure_logging
-from trading_bot.telegram_bot import TelegramBotConfig, run_telegram_bot
+from trading_bot.services.price_poller import PollerProviders, run_price_poller
+from trading_bot.services.telegram_bot import TelegramBotConfig, run_telegram_bot
 
 
 async def _run_bot_runtime(
