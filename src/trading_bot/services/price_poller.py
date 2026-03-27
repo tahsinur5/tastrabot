@@ -5,6 +5,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from trading_bot.adapters.notify.telegram_client import TelegramClient
 from trading_bot.adapters.prices.models import Quote
@@ -164,6 +165,17 @@ def _process_quote_alerts(
                 },
                 event_time=quote.asof,
             )
+            if _is_quiet_hours(
+                now=quote.asof,
+                tz=settings.tz,
+                start_hhmm=settings.quiet_hours_start,
+                end_hhmm=settings.quiet_hours_end,
+            ):
+                logger.info(
+                    "alerts_suppressed_quiet_hours",
+                    extra={"symbol": quote.symbol, "asof": quote.asof.isoformat()},
+                )
+                continue
             dedupe_key = _build_dedupe_key(
                 symbol=quote.symbol,
                 event_type=decision.event_type,
@@ -276,3 +288,23 @@ def _format_alert_message(*, quote: Quote, decision: AlertDecision) -> str:
             f"asof: {quote.asof.isoformat()}",
         ]
     )
+
+
+def _is_quiet_hours(*, now: datetime, tz: str, start_hhmm: str, end_hhmm: str) -> bool:
+    local_now = now.astimezone(ZoneInfo(tz))
+    start_hour, start_minute = _parse_hhmm(start_hhmm)
+    end_hour, end_minute = _parse_hhmm(end_hhmm)
+    now_minutes = local_now.hour * 60 + local_now.minute
+    start_minutes = start_hour * 60 + start_minute
+    end_minutes = end_hour * 60 + end_minute
+
+    if start_minutes == end_minutes:
+        return False
+    if start_minutes < end_minutes:
+        return start_minutes <= now_minutes < end_minutes
+    return now_minutes >= start_minutes or now_minutes < end_minutes
+
+
+def _parse_hhmm(value: str) -> tuple[int, int]:
+    hour, minute = value.split(":")
+    return int(hour), int(minute)
