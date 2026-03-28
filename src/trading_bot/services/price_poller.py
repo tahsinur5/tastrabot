@@ -228,8 +228,10 @@ def _decide_alert(
     cooldown_minutes = (
         stock_settings.cooldown_minutes if stock_settings else default_cooldown_minutes
     )
-    state = stock_settings.state if stock_settings else "WATCH"
+    state = (stock_settings.state if stock_settings else "WATCH").upper()
     direction = "UP" if pct_change >= 0 else "DOWN"
+    if not _state_allows_direction(state=state, direction=direction):
+        return None
 
     abs_change = abs(pct_change)
     if abs_change >= huge_move_pct:
@@ -253,6 +255,14 @@ def _decide_alert(
             state=state,
         )
     return None
+
+
+def _state_allows_direction(*, state: str, direction: str) -> bool:
+    if state == "BUY":
+        return direction == "DOWN"
+    if state == "SELL":
+        return direction == "UP"
+    return True
 
 
 def _build_dedupe_key(

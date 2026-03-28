@@ -84,6 +84,64 @@ def test_decide_alert_respects_stock_mute() -> None:
     assert decision is None
 
 
+def test_decide_alert_buy_state_only_allows_down_moves() -> None:
+    settings = StockSettingsRow(
+        ticker="AAPL",
+        state="BUY",
+        alert_pct=2.0,
+        huge_move_pct=5.0,
+        cooldown_minutes=60,
+        news_level="NORMAL",
+        muted=False,
+    )
+    up_move = _decide_alert(
+        quote=_quote(price=103.0, prev_close=100.0),
+        stock_settings=settings,
+        default_alert_pct=2.0,
+        default_huge_move_pct=5.0,
+        default_cooldown_minutes=60,
+    )
+    down_move = _decide_alert(
+        quote=_quote(price=97.0, prev_close=100.0),
+        stock_settings=settings,
+        default_alert_pct=2.0,
+        default_huge_move_pct=5.0,
+        default_cooldown_minutes=60,
+    )
+    assert up_move is None
+    assert down_move is not None
+    assert down_move.direction == "DOWN"
+
+
+def test_decide_alert_sell_state_only_allows_up_moves() -> None:
+    settings = StockSettingsRow(
+        ticker="AAPL",
+        state="SELL",
+        alert_pct=2.0,
+        huge_move_pct=5.0,
+        cooldown_minutes=60,
+        news_level="NORMAL",
+        muted=False,
+    )
+    down_move = _decide_alert(
+        quote=_quote(price=97.0, prev_close=100.0),
+        stock_settings=settings,
+        default_alert_pct=2.0,
+        default_huge_move_pct=5.0,
+        default_cooldown_minutes=60,
+    )
+    up_move = _decide_alert(
+        quote=_quote(price=103.0, prev_close=100.0),
+        stock_settings=settings,
+        default_alert_pct=2.0,
+        default_huge_move_pct=5.0,
+        default_cooldown_minutes=60,
+    )
+    assert down_move is None
+    assert up_move is not None
+    assert up_move.direction == "UP"
+
+
 def test_build_dedupe_key_uses_cooldown_bucket() -> None:
     asof = datetime(2026, 3, 27, 14, 30, 0, tzinfo=UTC)
     key = _build_dedupe_key(
